@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>mkinitramfs</title>
+</head>
+<body>
+
+<p> <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPLv3%2B-blue.svg" alt="License: GPLv3+"></a><a href="https://www.gnu.org/software/bash/"><img src="https://img.shields.io/badge/language-Bash-green.svg" alt="Language: Bash"></a><a href="https://mesonbuild.com/"><img src="https://img.shields.io/badge/build-Meson-orange.svg" alt="Build system: Meson"></a><a href="https://deepwiki.com/cargabsj175/neonatox-mkinitramfs"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a></p>
+<h1 id="mkinitramfs">mkinitramfs</h1>
+<p>mkinitramfs is a simple and transparent initramfs generator, designed following the Linux From Scratch (BLFS) philosophy. It avoids heavy automation and generates a predictable, fully controlled initramfs image.</p>
+<h2 id="origin">Origin</h2>
+<p>This project is based on the BLFS documentation:</p>
+<p><a href="https://www.linuxfromscratch.org/blfs/view/systemd/postlfs/initramfs.html">https://www.linuxfromscratch.org/blfs/view/systemd/postlfs/initramfs.html</a></p>
+<h2 id="installed-files">Installed files</h2>
+<ul>
+<li><code>/usr/sbin/mkinitramfs</code> – initramfs generator script</li>
+<li><code>/usr/share/mkinitramfs/init.in</code> – init script used inside the initramfs</li>
+</ul>
+<h2 id="dependencies">Dependencies</h2>
+<p>Required at runtime:</p>
+<ul>
+<li><strong>cpio</strong> – mandatory</li>
+</ul>
+<p>Optional (only if the root filesystem requires them):</p>
+<ul>
+<li><strong>LVM2 &gt;= 2.03.37</strong></li>
+<li><strong>mdadm &gt;= 4.4</strong></li>
+</ul>
+<h2 id="instalation">Instalation</h2>
+<pre><code>  meson setup builddir --prefix=/usr
+  ninja -C builddir
+  sudo ninja -C builddir install
+</code></pre>
+<h2 id="notes">Notes</h2>
+<p>This mkinitramfs implementation is intentionally minimal. Only the components strictly required to mount the root filesystem are included.</p>
+
+  </body>
+</html>
