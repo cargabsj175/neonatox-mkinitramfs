@@ -1,0 +1,227 @@
+#!/bin/bash
+
+# Función para mostrar ayuda
+usage() {
+  echo "Uso: $0 [opciones]"
+  echo "Opciones:"
+  echo "  -k, --kernel VER    Especifica la versión del kernel (por defecto: \$(uname -r))"
+  echo "  -r, --release STR   Especifica el sufijo de release (por defecto: n2025x_nonfree)"
+  echo "  -h, --help          Muestra esta ayuda"
+  exit 1
+}
+
+# Valores por defecto
+KERNEL_VERSION=$(uname -r)
+RELEASE="n2025x_nonfree"
+ARCH=$(uname -m)
+
+# Parsear argumentos
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -k|--kernel)
+      KERNEL_VERSION="$2"
+      shift; shift
+      ;;
+    -r|--release)
+      RELEASE="$2"
+      shift; shift
+      ;;
+    -h|--help)
+      usage
+      ;;
+    *)
+      echo "Opción desconocida: $1"
+      usage
+      ;;
+  esac
+done
+
+# Validar que exista el directorio de módulos si se especificó kernel
+if [ -n "$KERNEL_VERSION" ] && [ ! -d "/usr/lib/modules/$KERNEL_VERSION" ]; then
+  echo "Error: No existe el directorio /usr/lib/modules/$KERNEL_VERSION"
+  exit 1
+fi
+
+# Nombre final del initramfs
+INITRAMFS_FILE="/boot/initrd-${KERNEL_VERSION}-${ARCH}-${RELEASE}"
+
+DATADIR=/usr/share/mkinitramfs
+INITIN=init.in
+
+# Directorio temporal
+WDIR=$(mktemp -d /tmp/initrd-work.XXXXXXXXXX)
+unsorted=$(mktemp /tmp/unsorted.XXXXXXXXXX)
+
+# Crear estructura básica
+mkdir -p $WDIR/{dev,run,sys,proc,usr/{bin,lib/{firmware,modules},sbin}}
+mkdir -p $WDIR/etc/{modprobe.d,udev/rules.d}
+touch $WDIR/etc/modprobe.d/modprobe.conf
+ln -s usr/bin  $WDIR/bin
+ln -s usr/lib  $WDIR/lib
+ln -s usr/sbin $WDIR/sbin
+ln -s lib      $WDIR/lib64
+
+# Dispositivos básicos
+mknod -m 640 $WDIR/dev/console c 5 1
+mknod -m 664 $WDIR/dev/null    c 1 3
+
+# Configuración de udev
+if [ -f /etc/udev/udev.conf ]; then
+  cp /etc/udev/udev.conf $WDIR/etc/udev/udev.conf
+fi
+for file in $(find /etc/udev/rules.d/ -type f) ; do
+  cp $file $WDIR/etc/udev/rules.d
+done
+
+# Firmware
+# cp -a /usr/lib/firmware $WDIR/usr/lib 2>/dev/null || true
+
+# LVM
+if [ -x /usr/sbin/lvm ]; then
+  cp -a /etc/lvm $WDIR/etc 2>/dev/null || true
+fi
+
+# Instalar init
+install -m0755 $DATADIR/$INITIN $WDIR/init
+
+# Binarios necesarios
+binfiles="sh cat cp dd killall ls mkdir mknod mount umount sed sleep ln rm uname readlink basename"
+if [ -x /usr/bin/udevadm ]; then binfiles="$binfiles udevadm"; fi
+
+sbinfiles="modprobe blkid switch_root"
+for f in mdadm mdmon udevd udevadm; do
+  if [ -x /usr/sbin/$f ]; then sbinfiles="$sbinfiles $f"; fi
+done
+if [ -x /usr/sbin/lvm ]; then sbinfiles="$sbinfiles lvm dmsetup"; fi
+
+# Copiar binarios y sus bibliotecas
+copy() {
+  local file
+  if [ "$2" = "lib" ]; then
+    file=$(PATH=/usr/lib type -p $1)
+  else
+    file=$(type -p $1)
+  fi
+  if [ -n "$file" ] ; then
+    cp "$file" "$WDIR/usr/$2"
+  else
+    echo "Error: no se encontró $1 para copiar a /usr/$2"
+    rm -rf "$WDIR"
+    exit 1
+  fi
+}
+
+for f in $binfiles; do
+  [ -x "/usr/bin/$f" ] || continue
+  ldd "/usr/bin/$f" | sed 's/\t//' | cut -d' ' -f1 >> "$unsorted"
+  copy "/usr/bin/$f" bin
+done
+
+for f in $sbinfiles; do
+  cmd=$(type -p "$f")
+  [ -n "$cmd" ] || continue
+  ldd "$cmd" | sed 's/\t//' | cut -d' ' -f1 >> "$unsorted"
+  copy "$cmd" sbin
+done
+
+# Bibliotecas de udev/systemd si están fuera de /usr/sbin
+if [ -x /usr/lib/udev/udevd ]; then
+  ldd /usr/lib/udev/udevd | sed 's/\t//' | cut -d' ' -f1 >> "$unsorted"
+elif [ -x /usr/lib/systemd/systemd-udevd ]; then
+  ldd /usr/lib/systemd/systemd-udevd | sed 's/\t//' | cut -d' ' -f1 >> "$unsorted"
+fi
+
+# Symlinks para kmod (si aplica)
+if [ -n "$KERNEL_VERSION" ] && [ -x /usr/bin/kmod ]; then
+  binfiles="$binfiles kmod"
+  ln -s kmod $WDIR/usr/bin/lsmod
+  ln -s kmod $WDIR/usr/bin/insmod
+else
+  binfiles="$binfiles lsmod"
+  sbinfiles="$sbinfiles insmod"
+fi
+
+# Symlinks para LVM
+if [ -x /usr/sbin/lvm ]; then
+  for cmd in lvchange lvrename lvextend lvcreate lvdisplay lvscan \
+             pvchange pvck pvcreate pvdisplay pvscan \
+             vgchange vgcreate vgrename vgscan vgck; do
+    ln -s lvm $WDIR/usr/sbin/$cmd
+  done
+fi
+
+# Copiar bibliotecas únicas
+sort "$unsorted" | uniq | while read lib; do
+  case "$lib" in
+    ""|linux-vdso.so.1|linux-gate.so.1|libsystemd-shared*) continue ;;
+  esac
+  copy "$lib" lib
+done
+
+# Copiar udev/systemd si existen
+[[ -d /usr/lib/udev ]]   && cp -a /usr/lib/udev   $WDIR/usr/lib
+[[ -d /usr/lib/systemd ]] && cp -a /usr/lib/systemd $WDIR/usr/lib
+[[ -d /usr/lib/elogind ]] && cp -a /usr/lib/elogind $WDIR/usr/lib
+
+# Módulos del kernel (si se especificó versión)
+if [ -n "$KERNEL_VERSION" ]; then
+  find \
+    /usr/lib/modules/$KERNEL_VERSION/kernel/{crypto,fs,lib} \
+    /usr/lib/modules/$KERNEL_VERSION/kernel/drivers/{block,ata,nvme,md,firewire} \
+    /usr/lib/modules/$KERNEL_VERSION/kernel/drivers/{scsi,message,pcmcia,virtio} \
+    /usr/lib/modules/$KERNEL_VERSION/kernel/drivers/usb/{host,storage} \
+    -type f 2>/dev/null | cpio -p --make-directories --quiet "$WDIR"
+
+  mkdir -p "$WDIR/usr/lib/modules/$KERNEL_VERSION"
+  cp /usr/lib/modules/$KERNEL_VERSION/modules.{builtin,order} "$WDIR/usr/lib/modules/$KERNEL_VERSION"/
+  [ -f /usr/lib/modules/$KERNEL_VERSION/modules.builtin.modinfo ] && \
+    cp /usr/lib/modules/$KERNEL_VERSION/modules.builtin.modinfo "$WDIR/usr/lib/modules/$KERNEL_VERSION"/
+
+  depmod -b "$WDIR" "$KERNEL_VERSION"
+  
+  # === Firmware mínimo requerido por los módulos ===
+  mkdir -p "$WDIR/usr/lib/firmware"
+
+  find "$WDIR/usr/lib/modules/$KERNEL_VERSION" -name "*.ko*" \
+  | xargs -r modinfo -F firmware \
+  | sort -u \
+  | while read -r fw; do
+      [ -n "$fw" ] || continue
+      [ -f "/usr/lib/firmware/$fw" ] || continue
+      install -D "/usr/lib/firmware/$fw" \
+        "$WDIR/usr/lib/firmware/$fw"
+    done
+fi
+
+# Configuración RAID
+if [ -f /etc/mdadm.conf ]; then
+  cp /etc/mdadm.conf $WDIR/etc
+fi
+
+# Empaquetar initramfs
+printf "Creando $INITRAMFS_FILE... "
+( cd "$WDIR" && find . | cpio -o -H newc --quiet ) | zstd -T0 -19 -o "$INITRAMFS_FILE.tmp" -
+
+# Microcódigo (Intel/AMD)
+if ls /usr/lib/firmware/intel-ucode/* >/dev/null 2>&1 || \
+   ls /usr/lib/firmware/amd-ucode/*   >/dev/null 2>&1; then
+
+  rm -rf "$WDIR"/*
+  DSTDIR=$WDIR/kernel/x86/microcode
+  mkdir -p "$DSTDIR"
+
+  [ -d /usr/lib/firmware/amd-ucode ] && \
+    cat /usr/lib/firmware/amd-ucode/microcode_amd*.bin > "$DSTDIR/AuthenticAMD.bin"
+
+  [ -d /usr/lib/firmware/intel-ucode ] && \
+    cat /usr/lib/firmware/intel-ucode/* > "$DSTDIR/GenuineIntel.bin"
+
+  ( cd "$WDIR"; find . | cpio -o -H newc --quiet ) | cat - "$INITRAMFS_FILE.tmp" > "$INITRAMFS_FILE"
+else
+  mv "$INITRAMFS_FILE.tmp" "$INITRAMFS_FILE"
+fi
+
+# Limpieza
+rm -rf "$WDIR" "$unsorted"
+
+printf "listo.\n"
