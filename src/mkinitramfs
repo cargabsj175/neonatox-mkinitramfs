@@ -5,14 +5,14 @@ usage() {
   echo "Uso: $0 [opciones]"
   echo "Opciones:"
   echo "  -k, --kernel VER    Especifica la versión del kernel (por defecto: \$(uname -r))"
-  # echo "  -r, --release STR   Especifica el sufijo de release (por defecto: n2025x_nonfree)"
+  echo "  -r, --release STR   Especifica el sufijo de release (por defecto: empty)"
   echo "  -h, --help          Muestra esta ayuda"
   exit 1
 }
 
 # Valores por defecto
 KERNEL_VERSION=$(uname -r)
-# RELEASE="n2025x_nonfree"
+RELEASE=""
 ARCH=$(uname -m)
 
 # Parsear argumentos
@@ -43,7 +43,7 @@ if [ -n "$KERNEL_VERSION" ] && [ ! -d "/usr/lib/modules/$KERNEL_VERSION" ]; then
 fi
 
 # Nombre final del initramfs
-INITRAMFS_FILE="/boot/initrd-${KERNEL_VERSION}-${ARCH}-${RELEASE}"
+INITRAMFS_FILE="/boot/initrd-${KERNEL_VERSION}-${ARCH}${RELEASE:+-${RELEASE}}"
 
 DATADIR=/usr/share/mkinitramfs
 INITIN=init.in
