@@ -6,7 +6,8 @@ usage() {
   echo "Opciones:"
   echo "  -k, --kernel VER    Especifica la versión del kernel (por defecto: \$(uname -r))"
   echo "  -r, --release STR   Especifica el sufijo de release (por defecto: empty)"
-  echo "  -h, --help          Muestra esta ayuda"
+  echo "  -c, --compress STR Formato de compresión: gz, xz, zstd (por defecto: zstd)"
+  echo "  -h, --help         Muestra esta ayuda"
   exit 1
 }
 
@@ -14,6 +15,7 @@ usage() {
 KERNEL_VERSION=$(uname -r)
 RELEASE=""
 ARCH=$(uname -m)
+COMPRESS="zstd"
 
 # Parsear argumentos
 while [[ $# -gt 0 ]]; do
@@ -24,6 +26,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     -r|--release)
       RELEASE="$2"
+      shift; shift
+      ;;
+    -c|--compress)
+      COMPRESS="$2"
       shift; shift
       ;;
     -h|--help)
@@ -42,15 +48,35 @@ if [ -n "$KERNEL_VERSION" ] && [ ! -d "/usr/lib/modules/$KERNEL_VERSION" ]; then
   exit 1
 fi
 
+# Validar formato de compresión
+case "$COMPRESS" in
+  gz|xz|zstd) ;;
+  *) echo "Error: compresión '$COMPRESS' no soportada. Use: gz, xz, zstd"; exit 1 ;;
+esac
+
 # Nombre final del initramfs
 INITRAMFS_FILE="/boot/initrd-${KERNEL_VERSION}-${ARCH}${RELEASE:+-${RELEASE}}"
 
 DATADIR=/usr/share/mkinitramfs
 INITIN=init.in
+HOOKDIR=/usr/share/mkinitramfs/hooks
 
 # Directorio temporal
 WDIR=$(mktemp -d /tmp/initrd-work.XXXXXXXXXX)
 unsorted=$(mktemp /tmp/unsorted.XXXXXXXXXX)
+
+run_hooks() {
+  local phase="$1"
+  local dir="$HOOKDIR/$phase"
+  [ -d "$dir" ] || return 0
+  for hook in "$dir"/*; do
+    [ -x "$hook" ] || continue
+    "$hook" "$WDIR" || {
+      echo "Hook $hook falló"
+      return 1
+    }
+  done
+}
 
 # Crear estructura básica
 mkdir -p $WDIR/{dev,run,sys,proc,usr/{bin,lib/{firmware,modules},sbin}}
@@ -64,6 +90,11 @@ ln -s lib      $WDIR/lib64
 # Dispositivos básicos
 mknod -m 640 $WDIR/dev/console c 5 1
 mknod -m 664 $WDIR/dev/null    c 1 3
+
+# Configuración de modprobe.d (blacklist early)
+if [ -d /etc/modprobe.d ]; then
+  cp -a /etc/modprobe.d/* $WDIR/etc/modprobe.d 2>/dev/null || true
+fi
 
 # Configuración de udev
 if [ -f /etc/udev/udev.conf ]; then
@@ -83,6 +114,8 @@ fi
 
 # Instalar init
 install -m0755 $DATADIR/$INITIN $WDIR/init
+
+run_hooks pre-binaries
 
 # Binarios necesarios
 binfiles="sh cat cp dd killall ls mkdir mknod mount umount sed sleep ln rm uname readlink basename"
@@ -198,9 +231,21 @@ if [ -f /etc/mdadm.conf ]; then
   cp /etc/mdadm.conf $WDIR/etc
 fi
 
-# Empaquetar initramfs
+run_hooks pre-pack
+
+# Empaquetar initramfs con compresión selectable
+compress() {
+  case "$COMPRESS" in
+    gz)  gzip -n -f ;;
+    xz)  xz -9 -c ;;
+    zstd) zstd -T0 -19 -c ;;
+  esac
+}
+
 printf "Creando $INITRAMFS_FILE... "
-( cd "$WDIR" && find . | cpio -o -H newc --quiet ) | zstd -T0 -19 -o "$INITRAMFS_FILE.tmp" -
+( cd "$WDIR" && find . | cpio -o -H newc --quiet ) | compress > "$INITRAMFS_FILE.tmp" -
+
+run_hooks pre-microcode
 
 # Microcódigo (Intel/AMD)
 if ls /usr/lib/firmware/intel-ucode/* >/dev/null 2>&1 || \
