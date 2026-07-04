@@ -67,6 +67,43 @@ do_try_resume()
        echo -n ${maj%,}:$min > /sys/power/resume )
 }
 
+splash_start()
+{
+   case "$SPLASH" in
+      none|""|no) return ;;
+      plymouth)
+         if [ -x /sbin/plymouthd ]; then
+            /sbin/plymouthd --mode=boot --pid-file=/run/plymouthd.pid
+            /sbin/plymouth show-splash
+         fi
+         ;;
+   esac
+}
+
+splash_update()
+{
+   case "$SPLASH" in
+      none|""|no) return ;;
+      plymouth)
+         if [ -x /sbin/plymouth ]; then
+            /sbin/plymouth update --progress="$1"
+         fi
+         ;;
+   esac
+}
+
+splash_quit()
+{
+   case "$SPLASH" in
+      none|""|no) return ;;
+      plymouth)
+         if [ -x /sbin/plymouth ]; then
+            /sbin/plymouth quit || killall plymouthd 2>/dev/null
+         fi
+         ;;
+   esac
+}
+
 init=/sbin/init
 root=
 rootdelay=
@@ -76,6 +113,7 @@ rootflags=
 device=
 resume=
 noresume=false
+SPLASH=none
 
 mount -n -t devtmpfs devtmpfs /dev
 mount -n -t proc     proc     /proc
@@ -93,10 +131,13 @@ for param in $cmdline ; do
     rootflags=* ) rootflags=${param#rootflags=}   ;;
     resume=*    ) resume=${param#resume=}         ;;
     noresume    ) noresume=true                   ;;
+    splash=*   ) SPLASH=${param#splash=}         ;;
     ro          ) ro="ro"                         ;;
     rw          ) ro="rw"                         ;;
   esac
 done
+
+splash_start
 
 # udevd location depends on version
 if [ -x /sbin/udevd ]; then
@@ -119,9 +160,12 @@ if [ -x /sbin/vgchange  ] ; then /sbin/vgchange -a y > /dev/null ; fi
 if [ -n "$rootdelay"    ] ; then sleep "$rootdelay"              ; fi
 
 do_try_resume # This function will not return if resuming from disk
-do_mount_root
 
+splash_update 50
+do_mount_root
+splash_update 100
+
+splash_quit
 killall -w ${UDEVD##*/}
 
 exec switch_root /.root "$init" "$@"
-

@@ -44,6 +44,13 @@ install_subdir(
   install_dir : join_paths(datadir, 'mkinitramfs')
 )
 
+# Configuración de ejemplo
+install_data(
+  'data/mkinitramfs.conf',
+  install_dir : join_paths(datadir, 'doc', 'mkinitramfs'),
+  install_mode : 'rwxr-xr-x'
+)
+
 # Documentación
 install_data(
   'README.html',
