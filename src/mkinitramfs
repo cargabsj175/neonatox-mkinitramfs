@@ -12,6 +12,8 @@ Opciones:
   --tools-dir DIR       Directorio con binarios estáticos (live/netinstall)
   --staging DIR         Directorio de trabajo temporal
   --neonatox-dir DIR    Ruta a neonatox-live-boot (lib/ + libexec/)
+  --hooks-dir DIR       Directorio adicional de hooks (proyecto)
+  --xz-extreme          Usar compresión xz --extreme
   -h, --help            Muestra esta ayuda
 EOF
   exit 0
@@ -26,6 +28,9 @@ CUSTOM_OUTPUT=""
 TOOLS_DIR=""
 CUSTOM_STAGING=""
 NEONATOX_DIR=""
+CUSTOM_HOOKDIR=""
+XZ_EXTREME=false
+USE_BUSYBOX=false
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -45,6 +50,10 @@ while [[ $# -gt 0 ]]; do
       CUSTOM_STAGING="$2"; shift 2 ;;
     --neonatox-dir)
       NEONATOX_DIR="$2"; shift 2 ;;
+    --hooks-dir)
+      CUSTOM_HOOKDIR="$2"; shift 2 ;;
+    --xz-extreme)
+      XZ_EXTREME=true; shift ;;
     -h|--help)
       usage ;;
     *)
@@ -105,11 +114,13 @@ unsorted=$(mktemp /tmp/unsorted.XXXXXXXXXX)
 
 run_hooks() {
   local phase="$1"
-  local dir="$HOOKDIR/$phase"
-  [ -d "$dir" ] || return 0
-  for hook in "$dir"/*; do
-    [ -x "$hook" ] || continue
-    "$hook" "$WDIR" || { echo "Hook $hook falló"; return 1; }
+  for dir in "$HOOKDIR/$phase"${CUSTOM_HOOKDIR:+" $CUSTOM_HOOKDIR/$phase"}; do
+    [ -d "$dir" ] || continue
+    for hook in "$dir"/*; do
+      [ -x "$hook" ] || continue
+      TOOLS_DIR="$TOOLS_DIR" NEONATOX_DIR="$NEONATOX_DIR" PROFILE="$PROFILE" \
+        "$hook" "$WDIR" || { echo "Hook $hook falló"; return 1; }
+    done
   done
 }
 
@@ -194,6 +205,7 @@ copy() {
   fi
 }
 
+if [ "$USE_BUSYBOX" = false ]; then
 for f in $binfiles; do
   [ -x "/usr/bin/$f" ] || continue
   ldd "/usr/bin/$f" | sed 's/\t//' | cut -d' ' -f1 >> "$unsorted"
@@ -206,7 +218,9 @@ for f in $sbinfiles; do
   ldd "$cmd" | sed 's/\t//' | cut -d' ' -f1 >> "$unsorted"
   copy "$cmd" sbin
 done
+fi
 
+if [ "$USE_BUSYBOX" = false ]; then
 # Binarios de udev/systemd (solo perfil disk)
 if [ "$PROFILE" = "disk" ]; then
   if [ -x /usr/lib/udev/udevd ]; then
@@ -214,6 +228,7 @@ if [ "$PROFILE" = "disk" ]; then
   elif [ -x /usr/lib/systemd/systemd-udevd ]; then
     ldd /usr/lib/systemd/systemd-udevd | sed 's/\t//' | cut -d' ' -f1 >> "$unsorted"
   fi
+fi
 fi
 
 # PROFILE_REQUIRES: tools estáticas (live/netinstall)
@@ -229,7 +244,23 @@ if [ "$PROFILE" != "disk" ]; then
   fi
 fi
 
-# Symlinks kmod
+# Busybox + applet symlinks (live/netinstall con --tools-dir)
+if [ "$PROFILE" != "disk" ] && [ -n "$TOOLS_DIR" ] && [ -f "$TOOLS_DIR/busybox" ]; then
+  USE_BUSYBOX=true
+  install -m0755 "$TOOLS_DIR/busybox" "$WDIR/usr/bin/busybox"
+  ( cd "$WDIR/usr/bin" && ./busybox --list 2>/dev/null | \
+    grep -v "^init$" | grep -v "^poweroff$" | grep -v "^reboot$" | \
+    while read -r app; do
+      [ "$app" = "busybox" ] && continue
+      ln -sf busybox "$app"
+    done
+  )
+  # Si bash está presente en PROFILE_REQUIRES, usarlo como sh
+  [ -x "$WDIR/usr/bin/bash" ] && ln -sf bash "$WDIR/usr/bin/sh"
+fi
+
+if [ "$USE_BUSYBOX" = false ]; then
+# Symlinks kmod (solo cuando no usamos busybox, que ya los provee)
 if [ -n "$KERNEL_VERSION" ] && [ -x /usr/bin/kmod ]; then
   binfiles="$binfiles kmod"
   ln -sf kmod $WDIR/usr/bin/lsmod
@@ -255,6 +286,7 @@ sort "$unsorted" | uniq | while read lib; do
   esac
   copy "$lib" lib
 done
+fi
 
 # udev/systemd (solo perfil disk)
 if [ "$PROFILE" = "disk" ]; then
@@ -319,6 +351,11 @@ if [ -n "$KERNEL_VERSION" ]; then
       [ -f "/usr/lib/firmware/$fw" ] || continue
       install -D "/usr/lib/firmware/$fw" "$WDIR/usr/lib/firmware/$fw"
     done
+
+  # Descomprimir módulos del kernel
+  find "$WDIR/usr/lib/modules" -name "*.ko.zst" -exec unzstd -f --rm {} \; 2>/dev/null || true
+  find "$WDIR/usr/lib/modules" -name "*.ko.gz" -exec gunzip -f {} \; 2>/dev/null || true
+  find "$WDIR/usr/lib/modules" -name "*.ko.xz" -exec unxz -f {} \; 2>/dev/null || true
 fi
 
 run_hooks pre-pack
@@ -329,7 +366,7 @@ run_hooks pre-pack
 compress() {
   case "$COMPRESS" in
     gz)  gzip -n -f ;;
-    xz)  xz -9 -c ;;
+    xz)  xz -9 -c ${XZ_EXTREME:+--extreme} ;;
     zstd) zstd -T0 -19 -c ;;
   esac
 }
