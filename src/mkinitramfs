@@ -161,7 +161,7 @@ if [ "$PROFILE" = "disk" ]; then
   install -m0755 "$DATADIR/$INITIN" "$WDIR/init"
 else
   install -m0755 "$NEONATOX_DIR/init" "$WDIR/init"
-  cp -r "$NEONATOX_DIR/lib" "$WDIR/"
+  cp -r "$NEONATOX_DIR/lib" "$WDIR/usr/"
   cp -r "$NEONATOX_DIR/libexec" "$WDIR/"
   chmod 0755 "$WDIR/libexec"/* 2>/dev/null || true
 fi
