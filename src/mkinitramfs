@@ -205,6 +205,37 @@ copy() {
   fi
 }
 
+# Busybox + applet symlinks (live/netinstall con --tools-dir)
+# MUST come before ldd blocks so USE_BUSYBOX=true skips ldd entirely
+if [ "$PROFILE" != "disk" ] && [ -n "$TOOLS_DIR" ] && [ -f "$TOOLS_DIR/busybox" ]; then
+  USE_BUSYBOX=true
+  install -m0755 "$TOOLS_DIR/busybox" "$WDIR/usr/bin/busybox"
+  ( cd "$WDIR/usr/bin" && ./busybox --list 2>/dev/null | \
+    grep -v "^init$" | grep -v "^poweroff$" | grep -v "^reboot$" | \
+    while read -r app; do
+      [ "$app" = "busybox" ] && continue
+      ln -sf busybox "$app"
+    done
+  )
+  # Si bash está presente en PROFILE_REQUIRES, usarlo como sh
+  [ -x "$WDIR/usr/bin/bash" ] && ln -sf bash "$WDIR/usr/bin/sh"
+fi
+
+# PROFILE_REQUIRES: tools estáticas (live/netinstall)
+if [ "$PROFILE" != "disk" ]; then
+  PROFILE_LIB="$NEONATOX_DIR/lib/init-${PROFILE}.sh"
+  if [ -f "$PROFILE_LIB" ]; then
+    REQUIRES=$(grep '^PROFILE_REQUIRES=' "$PROFILE_LIB" | cut -d'"' -f2)
+    for tool in $REQUIRES; do
+      if [ -n "$TOOLS_DIR" ] && [ -f "$TOOLS_DIR/$tool" ]; then
+        install -m0755 "$TOOLS_DIR/$tool" "$WDIR/usr/bin/$tool"
+      fi
+    done
+  fi
+fi
+
+# ldd en musl es un wrapper (exec /lib/libc.so --list $@) que puede colgarse
+# con binarios glibc o estáticos. Cuando USE_BUSYBOX=true se salta todo esto.
 if [ "$USE_BUSYBOX" = false ]; then
 for f in $binfiles; do
   [ -x "/usr/bin/$f" ] || continue
@@ -229,34 +260,6 @@ if [ "$PROFILE" = "disk" ]; then
     ldd /usr/lib/systemd/systemd-udevd | sed 's/\t//' | cut -d' ' -f1 >> "$unsorted"
   fi
 fi
-fi
-
-# PROFILE_REQUIRES: tools estáticas (live/netinstall)
-if [ "$PROFILE" != "disk" ]; then
-  PROFILE_LIB="$NEONATOX_DIR/lib/init-${PROFILE}.sh"
-  if [ -f "$PROFILE_LIB" ]; then
-    REQUIRES=$(grep '^PROFILE_REQUIRES=' "$PROFILE_LIB" | cut -d'"' -f2)
-    for tool in $REQUIRES; do
-      if [ -n "$TOOLS_DIR" ] && [ -f "$TOOLS_DIR/$tool" ]; then
-        install -m0755 "$TOOLS_DIR/$tool" "$WDIR/usr/bin/$tool"
-      fi
-    done
-  fi
-fi
-
-# Busybox + applet symlinks (live/netinstall con --tools-dir)
-if [ "$PROFILE" != "disk" ] && [ -n "$TOOLS_DIR" ] && [ -f "$TOOLS_DIR/busybox" ]; then
-  USE_BUSYBOX=true
-  install -m0755 "$TOOLS_DIR/busybox" "$WDIR/usr/bin/busybox"
-  ( cd "$WDIR/usr/bin" && ./busybox --list 2>/dev/null | \
-    grep -v "^init$" | grep -v "^poweroff$" | grep -v "^reboot$" | \
-    while read -r app; do
-      [ "$app" = "busybox" ] && continue
-      ln -sf busybox "$app"
-    done
-  )
-  # Si bash está presente en PROFILE_REQUIRES, usarlo como sh
-  [ -x "$WDIR/usr/bin/bash" ] && ln -sf bash "$WDIR/usr/bin/sh"
 fi
 
 if [ "$USE_BUSYBOX" = false ]; then
