@@ -114,7 +114,7 @@ unsorted=$(mktemp /tmp/unsorted.XXXXXXXXXX)
 
 run_hooks() {
   local phase="$1"
-  for dir in "$HOOKDIR/$phase"${CUSTOM_HOOKDIR:+" $CUSTOM_HOOKDIR/$phase"}; do
+  for dir in "$HOOKDIR/$phase" ${CUSTOM_HOOKDIR:+"$CUSTOM_HOOKDIR/$phase"}; do
     [ -d "$dir" ] || continue
     for hook in "$dir"/*; do
       [ -x "$hook" ] || continue
@@ -223,7 +223,10 @@ fi
 
 # PROFILE_REQUIRES: tools estáticas (live/netinstall)
 if [ "$PROFILE" != "disk" ]; then
-  PROFILE_LIB="$NEONATOX_DIR/lib/init-${PROFILE}.sh"
+  case "$PROFILE" in
+    netinstall) PROFILE_LIB="$NEONATOX_DIR/lib/init-net.sh" ;;
+    *)          PROFILE_LIB="$NEONATOX_DIR/lib/init-${PROFILE}.sh" ;;
+  esac
   if [ -f "$PROFILE_LIB" ]; then
     REQUIRES=$(grep '^PROFILE_REQUIRES=' "$PROFILE_LIB" | cut -d'"' -f2)
     for tool in $REQUIRES; do
