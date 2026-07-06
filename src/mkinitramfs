@@ -354,8 +354,13 @@ if [ -n "$KERNEL_VERSION" ]; then
   | sort -u \
   | while read -r fw; do
       [ -n "$fw" ] || continue
-      [ -f "/usr/lib/firmware/$fw" ] || continue
-      install -D "/usr/lib/firmware/$fw" "$WDIR/usr/lib/firmware/$fw"
+      if [ -f "/usr/lib/firmware/$fw" ]; then
+        install -D "/usr/lib/firmware/$fw" "$WDIR/usr/lib/firmware/$fw"
+      elif [ -f "/usr/lib/firmware/$fw.zst" ]; then
+        install -D "/usr/lib/firmware/$fw.zst" "$WDIR/usr/lib/firmware/$fw.zst"
+      elif [ -f "/usr/lib/firmware/$fw.xz" ]; then
+        install -D "/usr/lib/firmware/$fw.xz" "$WDIR/usr/lib/firmware/$fw.xz"
+      fi
     done
 
   # Descomprimir módulos del kernel
