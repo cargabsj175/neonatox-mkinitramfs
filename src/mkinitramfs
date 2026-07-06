@@ -372,7 +372,7 @@ run_hooks pre-pack
 compress() {
   case "$COMPRESS" in
     gz)  gzip -n -f ;;
-    xz)  xz -9 -c ${XZ_EXTREME:+--extreme} ;;
+    xz)  xz -9 -c --check=crc32 ${XZ_EXTREME:+--extreme} ;;
     zstd) zstd -T0 -19 -c ;;
   esac
 }
