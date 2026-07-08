@@ -345,7 +345,6 @@ if [ -n "$KERNEL_VERSION" ]; then
   cp /usr/lib/modules/$KERNEL_VERSION/modules.{builtin,order} "$WDIR/usr/lib/modules/$KERNEL_VERSION"/
   [ -f /usr/lib/modules/$KERNEL_VERSION/modules.builtin.modinfo ] && \
     cp /usr/lib/modules/$KERNEL_VERSION/modules.builtin.modinfo "$WDIR/usr/lib/modules/$KERNEL_VERSION"/
-  depmod -b "$WDIR" "$KERNEL_VERSION"
 
   # Firmware mínimo
   mkdir -p "$WDIR/usr/lib/firmware"
@@ -363,10 +362,12 @@ if [ -n "$KERNEL_VERSION" ]; then
       fi
     done
 
-  # Descomprimir módulos del kernel
+  # Descomprimir módulos del kernel (antes de depmod)
   find "$WDIR/usr/lib/modules" -name "*.ko.zst" -exec unzstd -f --rm {} \; 2>/dev/null || true
   find "$WDIR/usr/lib/modules" -name "*.ko.gz" -exec gunzip -f {} \; 2>/dev/null || true
   find "$WDIR/usr/lib/modules" -name "*.ko.xz" -exec unxz -f {} \; 2>/dev/null || true
+
+  depmod -b "$WDIR" "$KERNEL_VERSION"
 fi
 
 run_hooks pre-pack
