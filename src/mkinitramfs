@@ -375,13 +375,13 @@ if [ -n "$KERNEL_VERSION" ]; then
     find "$WDIR/usr/lib/modules" -name "*.ko.xz" -exec unxz -f {} \; 2>/dev/null || true
   fi
 
-  # Intentar depmod; si falla (0 bytes), generar modules.dep plano local
-  depmod -b "$WDIR" "$KERNEL_VERSION" 2>/dev/null || true
+  # depmod busca lib/modules/ en BASE (no usr/lib/modules/)
+  depmod -b "$WDIR/usr" "$KERNEL_VERSION" 2>/dev/null || true
   if [ ! -s "$WDIR/usr/lib/modules/$KERNEL_VERSION/modules.dep" ]; then
     echo "depmod failed, generating flat modules.dep from copied modules..." >&2
     MODDIR="$WDIR/usr/lib/modules/$KERNEL_VERSION"
     > "$MODDIR/modules.dep"
-    find "$MODDIR/kernel" -name "*.ko" -type f | while read -r ko; do
+    find "$MODDIR/kernel" -name "*.ko*" -type f | while read -r ko; do
       echo "${ko#$MODDIR/}:"
     done >> "$MODDIR/modules.dep"
     > "$MODDIR/modules.alias"
