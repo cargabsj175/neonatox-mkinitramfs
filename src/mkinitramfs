@@ -13,7 +13,8 @@ Opciones:
   --staging DIR         Directorio de trabajo temporal
   --neonatox-dir DIR    Ruta a neonatox-live-boot (lib/ + libexec/)
   --hooks-dir DIR       Directorio adicional de hooks (proyecto)
-  --xz-extreme          Usar compresión xz --extreme
+   --xz-extreme          Usar compresión xz --extreme
+   --decompress-kernel-modules  Descomprimir .ko.zst/.ko.gz/.ko.xz (default: skip — kernel las carga directamente)
   -h, --help            Muestra esta ayuda
 EOF
   exit 0
@@ -31,6 +32,7 @@ NEONATOX_DIR=""
 CUSTOM_HOOKDIR=""
 XZ_EXTREME=false
 USE_BUSYBOX=false
+DECOMPRESS_MODULES=false
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -54,6 +56,8 @@ while [[ $# -gt 0 ]]; do
       CUSTOM_HOOKDIR="$2"; shift 2 ;;
     --xz-extreme)
       XZ_EXTREME=true; shift ;;
+    --decompress-kernel-modules)
+      DECOMPRESS_MODULES=true; shift ;;
     -h|--help)
       usage ;;
     *)
@@ -364,9 +368,11 @@ if [ -n "$KERNEL_VERSION" ]; then
     done
 
   # Descomprimir módulos del kernel (compatibilidad con kernels sin módulo decompress)
-  find "$WDIR/usr/lib/modules" -name "*.ko.zst" -exec unzstd -f --rm {} \; 2>/dev/null || true
-  find "$WDIR/usr/lib/modules" -name "*.ko.gz" -exec gunzip -f {} \; 2>/dev/null || true
-  find "$WDIR/usr/lib/modules" -name "*.ko.xz" -exec unxz -f {} \; 2>/dev/null || true
+  if [ "$DECOMPRESS_MODULES" = true ]; then
+    find "$WDIR/usr/lib/modules" -name "*.ko.zst" -exec unzstd -f --rm {} \; 2>/dev/null || true
+    find "$WDIR/usr/lib/modules" -name "*.ko.gz" -exec gunzip -f {} \; 2>/dev/null || true
+    find "$WDIR/usr/lib/modules" -name "*.ko.xz" -exec unxz -f {} \; 2>/dev/null || true
+  fi
 
   # Intentar depmod; si falla (0 bytes), generar modules.dep plano local
   depmod -b "$WDIR" "$KERNEL_VERSION" 2>/dev/null || true
