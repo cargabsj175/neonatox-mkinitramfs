@@ -127,8 +127,9 @@ run_hooks() {
 # ----------------------------------------------------------
 # ESTRUCTURA BÁSICA
 # ----------------------------------------------------------
-mkdir -p $WDIR/{dev,run,sys,proc,usr/{bin,lib/{firmware,modules},sbin}}
+mkdir -p $WDIR/{dev,run,sys,proc,tmp,var/lock,usr/{bin,lib/{firmware,modules},sbin}}
 mkdir -p $WDIR/etc/{modprobe.d,udev/rules.d}
+mkdir -p $WDIR/mnt/{iso,iso_test,newroot,ram,ro_root}
 touch $WDIR/etc/modprobe.d/modprobe.conf
 ln -s usr/bin  $WDIR/bin
 ln -s usr/lib  $WDIR/lib
@@ -367,17 +368,19 @@ if [ -n "$KERNEL_VERSION" ]; then
   find "$WDIR/usr/lib/modules" -name "*.ko.gz" -exec gunzip -f {} \; 2>/dev/null || true
   find "$WDIR/usr/lib/modules" -name "*.ko.xz" -exec unxz -f {} \; 2>/dev/null || true
 
-  # Intentar depmod; si falla (0 bytes), copiar del host y parchear rutas
+  # Intentar depmod; si falla (0 bytes), generar modules.dep plano local
   depmod -b "$WDIR" "$KERNEL_VERSION" 2>/dev/null || true
   if [ ! -s "$WDIR/usr/lib/modules/$KERNEL_VERSION/modules.dep" ]; then
-    echo "depmod produced empty modules.dep, copying from host..." >&2
-    for f in modules.dep modules.alias modules.symbols modules.softdep modules.devname; do
-      if [ -f "/usr/lib/modules/$KERNEL_VERSION/$f" ]; then
-        cp "/usr/lib/modules/$KERNEL_VERSION/$f" "$WDIR/usr/lib/modules/$KERNEL_VERSION/"
-      fi
-    done
-    sed -i 's/\.ko\.zst/.ko/g' "$WDIR/usr/lib/modules/$KERNEL_VERSION/modules.dep" 2>/dev/null || true
-    sed -i 's/\.ko\.zst/.ko/g' "$WDIR/usr/lib/modules/$KERNEL_VERSION/modules.alias" 2>/dev/null || true
+    echo "depmod failed, generating flat modules.dep from copied modules..." >&2
+    MODDIR="$WDIR/usr/lib/modules/$KERNEL_VERSION"
+    > "$MODDIR/modules.dep"
+    find "$MODDIR/kernel" -name "*.ko" -type f | while read -r ko; do
+      echo "${ko#$MODDIR/}:"
+    done >> "$MODDIR/modules.dep"
+    > "$MODDIR/modules.alias"
+    > "$MODDIR/modules.symbols"
+    > "$MODDIR/modules.softdep"
+    > "$MODDIR/modules.devname"
   fi
 fi
 
