@@ -336,11 +336,13 @@ if [ -n "$KERNEL_VERSION" ]; then
       ;;
     netinstall)
       find \
+        /usr/lib/modules/$KERNEL_VERSION/kernel/crypto \
         /usr/lib/modules/$KERNEL_VERSION/kernel/fs \
         /usr/lib/modules/$KERNEL_VERSION/kernel/lib \
         /usr/lib/modules/$KERNEL_VERSION/kernel/net \
         /usr/lib/modules/$KERNEL_VERSION/kernel/drivers/{block,ata,nvme} \
         /usr/lib/modules/$KERNEL_VERSION/kernel/drivers/{scsi,virtio} \
+        /usr/lib/modules/$KERNEL_VERSION/kernel/drivers/{pps,ptp} \
         /usr/lib/modules/$KERNEL_VERSION/kernel/drivers/usb/{host,storage} \
         /usr/lib/modules/$KERNEL_VERSION/kernel/drivers/net \
         -type f 2>/dev/null | cpio -p --make-directories --quiet "$WDIR"
