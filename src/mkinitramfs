@@ -362,12 +362,23 @@ if [ -n "$KERNEL_VERSION" ]; then
       fi
     done
 
-  # Descomprimir módulos del kernel (antes de depmod)
+  # Descomprimir módulos del kernel (compatibilidad con kernels sin módulo decompress)
   find "$WDIR/usr/lib/modules" -name "*.ko.zst" -exec unzstd -f --rm {} \; 2>/dev/null || true
   find "$WDIR/usr/lib/modules" -name "*.ko.gz" -exec gunzip -f {} \; 2>/dev/null || true
   find "$WDIR/usr/lib/modules" -name "*.ko.xz" -exec unxz -f {} \; 2>/dev/null || true
 
-  depmod -b "$WDIR" "$KERNEL_VERSION"
+  # Intentar depmod; si falla (0 bytes), copiar del host y parchear rutas
+  depmod -b "$WDIR" "$KERNEL_VERSION" 2>/dev/null || true
+  if [ ! -s "$WDIR/usr/lib/modules/$KERNEL_VERSION/modules.dep" ]; then
+    echo "depmod produced empty modules.dep, copying from host..." >&2
+    for f in modules.dep modules.alias modules.symbols modules.softdep modules.devname; do
+      if [ -f "/usr/lib/modules/$KERNEL_VERSION/$f" ]; then
+        cp "/usr/lib/modules/$KERNEL_VERSION/$f" "$WDIR/usr/lib/modules/$KERNEL_VERSION/"
+      fi
+    done
+    sed -i 's/\.ko\.zst/.ko/g' "$WDIR/usr/lib/modules/$KERNEL_VERSION/modules.dep" 2>/dev/null || true
+    sed -i 's/\.ko\.zst/.ko/g' "$WDIR/usr/lib/modules/$KERNEL_VERSION/modules.alias" 2>/dev/null || true
+  fi
 fi
 
 run_hooks pre-pack
