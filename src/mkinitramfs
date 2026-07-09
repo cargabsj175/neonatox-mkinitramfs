@@ -338,6 +338,7 @@ if [ -n "$KERNEL_VERSION" ]; then
       find \
         /usr/lib/modules/$KERNEL_VERSION/kernel/fs \
         /usr/lib/modules/$KERNEL_VERSION/kernel/lib \
+        /usr/lib/modules/$KERNEL_VERSION/kernel/net \
         /usr/lib/modules/$KERNEL_VERSION/kernel/drivers/{block,ata,nvme} \
         /usr/lib/modules/$KERNEL_VERSION/kernel/drivers/{scsi,virtio} \
         /usr/lib/modules/$KERNEL_VERSION/kernel/drivers/usb/{host,storage} \
