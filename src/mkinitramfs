@@ -335,13 +335,28 @@ if [ -n "$KERNEL_VERSION" ]; then
         -type f 2>/dev/null | cpio -p --make-directories --quiet "$WDIR"
       ;;
     netinstall)
-      find \
-        /usr/lib/modules/$KERNEL_VERSION/kernel/crypto \
-        /usr/lib/modules/$KERNEL_VERSION/kernel/fs \
-        /usr/lib/modules/$KERNEL_VERSION/kernel/lib \
-        /usr/lib/modules/$KERNEL_VERSION/kernel/net \
-        /usr/lib/modules/$KERNEL_VERSION/kernel/drivers \
-        -type f 2>/dev/null | cpio -p --make-directories --quiet "$WDIR"
+      # Modules that netinstall needs to load
+      NETINSTALL_MODULES="
+        ext2 ext3 ext4 vfat fat exfat ntfs3 btrfs xfs
+        scsi_mod sd_mod sr_mod cdrom
+        usbcore usb_common usb-storage uas
+        xhci_hcd ehci_hcd uhci_hcd xhci_pci ehci_pci ohci_pci
+        ahci libata zram
+        ata_piix pata_generic
+        nvme nvme_core
+        hid-generic usbhid i8042 atkbd libps2
+        virtio_net e1000 e1000e r8169 tg3
+        ath5k ath9k
+      "
+      # Resolve full dependency paths from host modules.dep
+      for mod in $NETINSTALL_MODULES; do
+        modprobe \
+          --set-version "$KERNEL_VERSION" \
+          --show-depends "$mod" 2>/dev/null \
+        | sed -n 's/^insmod \///p'
+      done | sort -u | while read -r path; do
+        install -D "/$path" "$WDIR/usr/$path"
+      done
       ;;
   esac
 
