@@ -402,6 +402,18 @@ if [ -n "$KERNEL_VERSION" ]; then
     > "$MODDIR/modules.softdep"
     > "$MODDIR/modules.devname"
   fi
+
+  # Busybox modprobe-small usa modules.dep.bb (no modules.dep)
+  # Formato: modulo<newline>deps<newline><empty-line>
+  BB_DEP="$WDIR/usr/lib/modules/$KERNEL_VERSION/modules.dep.bb"
+  > "$BB_DEP"
+  while IFS=: read -r mod deps; do
+    [ -z "$mod" ] && continue
+    echo "$mod" >> "$BB_DEP"
+    deps="$(echo "${deps:-}" | sed 's/^ *//')"
+    [ -n "$deps" ] && echo "$deps" >> "$BB_DEP" || echo "" >> "$BB_DEP"
+    echo "" >> "$BB_DEP"
+  done < "$WDIR/usr/lib/modules/$KERNEL_VERSION/modules.dep"
 fi
 
 run_hooks pre-pack
