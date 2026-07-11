@@ -346,7 +346,7 @@ if [ -n "$KERNEL_VERSION" ]; then
         nvme nvme_core
         hid-generic usbhid i8042 atkbd libps2
         virtio_net e1000 e1000e r8169 tg3
-        ath5k ath9k iwlwifi iwlmvm
+        ath5k ath9k iwlwifi iwlmvm iwlmld iwldvm
       "
       # Resolve full dependency paths from host modules.dep
       for mod in $NETINSTALL_MODULES; do
