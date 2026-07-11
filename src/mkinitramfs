@@ -404,15 +404,20 @@ if [ -n "$KERNEL_VERSION" ]; then
   fi
 
   # Busybox modprobe-small usa modules.dep.bb (no modules.dep)
-  # Formato: modulo<newline>deps<newline><empty-line>
+  # Formato: pathname[<space>aliases]<newline>deps<newline>[<empty-line>]
+  #          La línea en blanco solo si deps NO está vacía
   BB_DEP="$WDIR/usr/lib/modules/$KERNEL_VERSION/modules.dep.bb"
   > "$BB_DEP"
   while IFS=: read -r mod deps; do
     [ -z "$mod" ] && continue
     echo "$mod" >> "$BB_DEP"
     deps="$(echo "${deps:-}" | sed 's/^ *//')"
-    [ -n "$deps" ] && echo "$deps" >> "$BB_DEP" || echo "" >> "$BB_DEP"
-    echo "" >> "$BB_DEP"
+    if [ -n "$deps" ]; then
+      echo "$deps" >> "$BB_DEP"
+      echo "" >> "$BB_DEP"
+    else
+      echo "" >> "$BB_DEP"
+    fi
   done < "$WDIR/usr/lib/modules/$KERNEL_VERSION/modules.dep"
 fi
 
