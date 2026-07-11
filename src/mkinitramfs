@@ -403,22 +403,19 @@ if [ -n "$KERNEL_VERSION" ]; then
     > "$MODDIR/modules.devname"
   fi
 
-  # Busybox modprobe-small usa modules.dep.bb (no modules.dep)
-  # Formato: pathname[<space>aliases]<newline>deps<newline>[<empty-line>]
-  #          La línea en blanco solo si deps NO está vacía
-  BB_DEP="$WDIR/usr/lib/modules/$KERNEL_VERSION/modules.dep.bb"
-  > "$BB_DEP"
-  while IFS=: read -r mod deps; do
-    [ -z "$mod" ] && continue
-    echo "$mod" >> "$BB_DEP"
-    deps="$(echo "${deps:-}" | sed 's/^ *//')"
-    if [ -n "$deps" ]; then
-      echo "$deps" >> "$BB_DEP"
-      echo "" >> "$BB_DEP"
-    else
-      echo "" >> "$BB_DEP"
+  # Busybox modprobe-small usa modules.dep.bb — lo genera busybox depmod
+  if [ "$PROFILE" != "disk" ] && [ -f "$TOOLS_DIR/busybox" ]; then
+    # Busybox depmod no soporta -b, bind-mount temporal
+    MKDIR_MOD=false
+    if [ ! -d "/lib/modules/$KERNEL_VERSION" ]; then
+      mkdir -p "/lib/modules/$KERNEL_VERSION"
+      MKDIR_MOD=true
     fi
-  done < "$WDIR/usr/lib/modules/$KERNEL_VERSION/modules.dep"
+    mount --bind "$WDIR/usr/lib/modules/$KERNEL_VERSION" "/lib/modules/$KERNEL_VERSION"
+    "$TOOLS_DIR/busybox" depmod "$KERNEL_VERSION" 2>/dev/null || true
+    umount "/lib/modules/$KERNEL_VERSION"
+    $MKDIR_MOD && rmdir "/lib/modules/$KERNEL_VERSION" 2>/dev/null || true
+  fi
 fi
 
 run_hooks pre-pack
