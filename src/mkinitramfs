@@ -411,24 +411,8 @@ if [ -n "$KERNEL_VERSION" ]; then
     > "$MODDIR/modules.devname"
   fi
 
-  # Busybox modprobe-small usa modules.dep.bb — lo genera busybox depmod
-  if [ "$PROFILE" != "disk" ] && [ -f "$TOOLS_DIR/busybox" ]; then
-    # Intentar depmod -b directo (busybox con depmod completo)
-    if "$TOOLS_DIR/busybox" depmod -b "$WDIR/usr" "$KERNEL_VERSION" 2>/dev/null; then
-      : # success
-    else
-      # Fallback: bind mount (busybox antiguo sin -b)
-      MKDIR_MOD=false
-      if [ ! -d "/lib/modules/$KERNEL_VERSION" ]; then
-        mkdir -p "/lib/modules/$KERNEL_VERSION"
-        MKDIR_MOD=true
-      fi
-      mount --bind "$WDIR/usr/lib/modules/$KERNEL_VERSION" "/lib/modules/$KERNEL_VERSION"
-      "$TOOLS_DIR/busybox" depmod "$KERNEL_VERSION" 2>/dev/null || true
-      umount "/lib/modules/$KERNEL_VERSION"
-      $MKDIR_MOD && rmdir "/lib/modules/$KERNEL_VERSION" 2>/dev/null || true
-    fi
-  fi
+  # modules.dep.bb se genera al boot por 20-load-modules via "depmod"
+  # No es necesario generarlo en build-time
 fi
 
 run_hooks pre-pack
