@@ -217,11 +217,17 @@ if [ "$PROFILE" != "disk" ] && [ -n "$TOOLS_DIR" ] && [ -f "$TOOLS_DIR/busybox" 
   install -m0755 "$TOOLS_DIR/busybox" "$WDIR/usr/bin/busybox"
   ( cd "$WDIR/usr/bin" && ./busybox --list 2>/dev/null | \
     grep -v "^init$" | grep -v "^poweroff$" | grep -v "^reboot$" | \
+    { [ ! -f /usr/share/hwdata/pci.ids ] && grep -v "^lspci$" || cat; } | \
     while read -r app; do
       [ "$app" = "busybox" ] && continue
       ln -sf busybox "$app"
     done
   )
+  # lspci wrapper + pci.ids database (solo si existe en host)
+  if [ -f /usr/share/hwdata/pci.ids ] && [ -f "$NEONATOX_DIR/lspci" ]; then
+    install -D /usr/share/hwdata/pci.ids "$WDIR/usr/share/hwdata/pci.ids"
+    install -m 0755 "$NEONATOX_DIR/lspci" "$WDIR/usr/bin/lspci"
+  fi
   # Si bash está presente en PROFILE_REQUIRES, usarlo como sh
   [ -x "$WDIR/usr/bin/bash" ] && ln -sf bash "$WDIR/usr/bin/sh"
 fi
@@ -346,7 +352,9 @@ if [ -n "$KERNEL_VERSION" ]; then
         nvme nvme_core
         hid-generic usbhid i8042 atkbd libps2
         virtio_net e1000 e1000e r8169 tg3
-        ath5k ath9k iwlwifi iwlmvm iwlmld iwldvm
+        ath5k ath9k iwlwifi iwlmvm iwlmld iwldvm \
+        rtl8xxxu rtl8188ee rtl8192ce rtl8723be rtl8821ae \
+        rtw88_8822be rtw88_8822ce rtw89_8852be rtw89_8852ce rtw89_8922ae
       "
       # Resolve full dependency paths from host modules.dep
       for mod in $NETINSTALL_MODULES; do
@@ -405,16 +413,21 @@ if [ -n "$KERNEL_VERSION" ]; then
 
   # Busybox modprobe-small usa modules.dep.bb — lo genera busybox depmod
   if [ "$PROFILE" != "disk" ] && [ -f "$TOOLS_DIR/busybox" ]; then
-    # Busybox depmod no soporta -b, bind-mount temporal
-    MKDIR_MOD=false
-    if [ ! -d "/lib/modules/$KERNEL_VERSION" ]; then
-      mkdir -p "/lib/modules/$KERNEL_VERSION"
-      MKDIR_MOD=true
+    # Intentar depmod -b directo (busybox con depmod completo)
+    if "$TOOLS_DIR/busybox" depmod -b "$WDIR/usr" "$KERNEL_VERSION" 2>/dev/null; then
+      : # success
+    else
+      # Fallback: bind mount (busybox antiguo sin -b)
+      MKDIR_MOD=false
+      if [ ! -d "/lib/modules/$KERNEL_VERSION" ]; then
+        mkdir -p "/lib/modules/$KERNEL_VERSION"
+        MKDIR_MOD=true
+      fi
+      mount --bind "$WDIR/usr/lib/modules/$KERNEL_VERSION" "/lib/modules/$KERNEL_VERSION"
+      "$TOOLS_DIR/busybox" depmod "$KERNEL_VERSION" 2>/dev/null || true
+      umount "/lib/modules/$KERNEL_VERSION"
+      $MKDIR_MOD && rmdir "/lib/modules/$KERNEL_VERSION" 2>/dev/null || true
     fi
-    mount --bind "$WDIR/usr/lib/modules/$KERNEL_VERSION" "/lib/modules/$KERNEL_VERSION"
-    "$TOOLS_DIR/busybox" depmod "$KERNEL_VERSION" 2>/dev/null || true
-    umount "/lib/modules/$KERNEL_VERSION"
-    $MKDIR_MOD && rmdir "/lib/modules/$KERNEL_VERSION" 2>/dev/null || true
   fi
 fi
 
