@@ -32,7 +32,7 @@ NEONATOX_DIR=""
 CUSTOM_HOOKDIR=""
 XZ_EXTREME=false
 USE_BUSYBOX=false
-DECOMPRESS_MODULES=false
+DECOMPRESS_MODULES=true
 
 while [[ $# -gt 0 ]]; do
   case $1 in
